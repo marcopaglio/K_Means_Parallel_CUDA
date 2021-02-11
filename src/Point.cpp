@@ -43,7 +43,7 @@ void setMetadata(Point* p, const string& meta) {
 
 }
 
-float getDistance(const Point& p1, const Point& p2) noexcept(false) {
+__host__ float getDistance(const Point& p1, const Point& p2) noexcept(false) {
     if (p1.dimension != p2.dimension) {
         throw invalid_argument("Distance is calculated only for same dimension points");
     }

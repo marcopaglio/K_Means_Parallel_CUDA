@@ -7,7 +7,7 @@
 
 #include "SetOfPoints.h"
 
-SetOfPoints* SetOfPoints_new(Point* pl, int s) {
+__host__ SetOfPoints* SetOfPoints_new(Point* pl, int s) {
     SetOfPoints* cluster;
     cluster = (SetOfPoints *) calloc(s, sizeof(SetOfPoints));
 
@@ -17,18 +17,18 @@ SetOfPoints* SetOfPoints_new(Point* pl, int s) {
     return cluster;
 }
 
-void setSizeList(SetOfPoints* cluster, int s) noexcept(false) {
+__host__ void setSizeList(SetOfPoints* cluster, int s) noexcept(false) {
     if (s < 0) {
         throw invalid_argument("Size must be not negative");
     }
     (cluster)->sizeList = s;
 }
 
-void setPointList(SetOfPoints* cluster, Point* pl) {
+__host__ void setPointList(SetOfPoints* cluster, Point* pl) {
     (cluster)->pointList = pl;
 }
 
-void setAttributes(SetOfPoints* cluster, Point* pl, int s) {
+__host__ void setAttributes(SetOfPoints* cluster, Point* pl, int s) {
     setPointList(cluster, pl);
     setSizeList(cluster, s);
 }
@@ -40,7 +40,7 @@ void insertPoint(SetOfPoints* cluster, const Point& p, int pos) {
     ((cluster)->pointList)[pos] = p;
 }
 
-Point getCenter(const SetOfPoints& cluster) noexcept(false) {
+__host__ Point getCenter(const SetOfPoints& cluster) noexcept(false) {
     if (cluster.sizeList == 0) {
         throw invalid_argument("Cluster has empty list of point");
     }

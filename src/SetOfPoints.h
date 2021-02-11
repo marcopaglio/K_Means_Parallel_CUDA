@@ -15,17 +15,17 @@ typedef struct {
     int sizeList;
 } SetOfPoints;
 
-SetOfPoints* SetOfPoints_new(Point* pl, int s);
+__host__ SetOfPoints* SetOfPoints_new(Point* pl, int s);
 
-void setSizeList(SetOfPoints* cluster, int s) noexcept(false);
+__host__ void setSizeList(SetOfPoints* cluster, int s) noexcept(false);
 
-void setPointList(SetOfPoints* cluster, Point* pl);
+__host__ void setPointList(SetOfPoints* cluster, Point* pl);
 
-void setAttributes(SetOfPoints* cluster, Point* pl, int s);
+__host__ void setAttributes(SetOfPoints* cluster, Point* pl, int s);
 
 void insertPoint(SetOfPoints* cluster, const Point& p, int pos);
 
-Point getCenter(const SetOfPoints& cluster) noexcept(false);
+__host__ Point getCenter(const SetOfPoints& cluster) noexcept(false);
 
 float getDiameter(const SetOfPoints& cluster);
 

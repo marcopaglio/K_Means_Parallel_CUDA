@@ -7,7 +7,7 @@ using namespace std;
 #define MAX_K 10
 
 int main() {
-	int k = 3;
+	int k = 6;
 
 	Image* img = load("/home/marco/eclipse-workspace/K_Means_Parallel_CUDA/src/Image/test.ppm");
 

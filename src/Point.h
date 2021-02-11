@@ -8,6 +8,8 @@
 #ifndef POINT_H_
 #define POINT_H_
 
+#include <cuda_runtime_api.h>
+#include <cuda_runtime.h>
 #include <string>
 #include <stdexcept>
 
@@ -29,7 +31,7 @@ void setCoordinates(Point* p, float* coordinates);
 
 void setMetadata(Point* p, const string& meta);
 
-float getDistance(const Point& p1, const Point& p2) noexcept(false);
+__host__ float getDistance(const Point& p1, const Point& p2) noexcept(false); //TODO anche __device__
 
 void setAttributes(Point* p, float* c, int d, const string& s);
 

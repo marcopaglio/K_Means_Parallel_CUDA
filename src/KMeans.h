@@ -11,9 +11,9 @@
 #include "SetOfPoints.h"
 #include "Point.h"
 
-SetOfPoints* kMeans(int k, const SetOfPoints& data) noexcept(false);
+__host__ SetOfPoints* kMeans(int k, const SetOfPoints& data) noexcept(false);
 
-Point* initialCentroids(int k, const SetOfPoints& data);
+__host__ Point* initialCentroids(int k, const SetOfPoints& data);
 
 void updateClusters(int k, Point* centroids, const SetOfPoints& data, int* clusterization, int* clusterSize);
 
