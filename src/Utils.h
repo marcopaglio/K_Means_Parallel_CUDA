@@ -11,12 +11,6 @@
 #include "SetOfPoints.h"
 #include "Point.h"
 #include "Image.h"
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <cmath>
-
-#define PPMREADBUFLEN 256
 
 template<typename T>
 static inline T _abs(const T &a) {
@@ -63,78 +57,29 @@ static inline float clamp(float x, float start, float end) {
 	return _min(_max(x, start), end);
 }
 
-static const char *skipSpaces(const char *line) {
-	while (*line == ' ' || *line == '\t') {
-		line++;
-		if (*line == '\0') {
-			break;
-		}
-	}
-	return line;
-}
+/*
+ * Load a JPEG image and return it as Image
+ * @param filename path to JPEG
+ * @return Image
+ */
+Image* loadJPEG(const char *filename);
 
-static char nextNonSpaceChar(const char *line0) {
-	const char *line = skipSpaces(line0);
-	return *line;
-}
-
-static bool isComment(const char *line) {
-	char nextChar = nextNonSpaceChar(line);
-	if (nextChar == '\0') {
-		return true;
-	} else {
-		return nextChar == '#';
-	}
-}
-
-static void parseDimensions(const char *line0, int *width, int *height) {
-	const char *line = skipSpaces(line0);
-	sscanf(line, "%d %d", width, height);
-}
-
-static void parseDimensions(const char *line0, int *width, int *height,
-		int *channels) {
-	const char *line = skipSpaces(line0);
-	sscanf(line, "%d %d %d", width, height, channels);
-}
-
-static void parseDepth(const char *line0, int *depth) {
-	const char *line = skipSpaces(line0);
-	sscanf(line, "%d", depth);
-}
-
-static char *File_readLine(FILE* file) {
-	static char buffer[PPMREADBUFLEN];
-	if (file == NULL) {
-		return NULL;
-	}
-	memset(buffer, 0, PPMREADBUFLEN);
-
-	if (fgets(buffer, PPMREADBUFLEN - 1, file)) {
-		return buffer;
-	} else {
-		return NULL;
-	}
-}
-
-static char *nextLine(FILE* file) {
-	char *line = NULL;
-	while ((line = File_readLine(file)) != NULL) {
-		if (!isComment(line)) {
-			break;
-		}
-	}
-	return line;
-}
-
-char* File_read(FILE* file, size_t size, size_t count);
-
-bool File_write(FILE* file, const void *buffer, size_t size, size_t count);
-
-Image* load(const char *filename);
-
+/*
+ * Transform an Image in a SetOfPoints (where each point has metadata relative to its position as pixel)
+ * @param img reference to the Image to pixelize
+ * @return SetOfPoints
+ */
 SetOfPoints pixelize(const Image* img);
 
-bool saveRGBimage2D(int k, SetOfPoints* clusters, const char *filename, const Image* img) noexcept(false);
+/*
+ * Save an array of clusters as PNG image
+ * @param clusters reference to array of clusters
+ * @param k number of clusters
+ * @param filename path to PNG
+ * @param width width of image
+ * @param height height of image
+ * @return TRUE if success, false otherwise
+ */
+bool savePNG(SetOfPoints* clusters, int k, const char *filename, int width, int height);
 
 #endif /* UTILS_H_ */

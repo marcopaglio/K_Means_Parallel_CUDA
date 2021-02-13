@@ -10,7 +10,7 @@
 #include <iostream>
 #include <cassert>
 
-Image* Image_new(int width, int height, int channels, float *data) {
+Image* Image_new(int width, int height, int channels, unsigned char *data) {
 	Image* img;
 
 	img = (Image*) malloc(sizeof(Image));
@@ -25,7 +25,7 @@ Image* Image_new(int width, int height, int channels, float *data) {
 }
 
 Image* Image_new(int width, int height, int channels) {
-	float *data = (float*) malloc(sizeof(float) * width * height * channels);
+	unsigned char *data = (unsigned char*) malloc(sizeof(unsigned char) * width * height * channels);
 	return Image_new(width, height, channels, data);
 }
 
@@ -42,8 +42,8 @@ void Image_delete(Image* img) {
 	}
 }
 
-void Image_setPixel(Image* img, int x, int y, int c, float val) {
-	float *data = Image_getData(img);
+void Image_setPixel(Image* img, int x, int y, int c, unsigned char val) {
+	unsigned char *data = Image_getData(img);
 	int channels = Image_getChannels(img);
 	int pitch = Image_getPitch(img);
 
@@ -52,67 +52,10 @@ void Image_setPixel(Image* img, int x, int y, int c, float val) {
 	return;
 }
 
-float Image_getPixel(Image* img, int x, int y, int c) {
-	float *data = Image_getData(img);
+unsigned char Image_getPixel(Image* img, int x, int y, int c) {
+	unsigned char *data = Image_getData(img);
 	int channels = Image_getChannels(img);
 	int pitch = Image_getPitch(img);
 
 	return data[y * pitch + x * channels + c];
-}
-
-bool Image_is_same(Image* a, Image* b) {
-	if (a == NULL || b == NULL) {
-		std::cerr << "Comparing null images." << std::endl;
-		return false;
-	} else if (a == b) {
-		return true;
-	} else if (Image_getWidth(a) != Image_getWidth(b)) {
-		std::cerr << "Image widths do not match." << std::endl;
-		return false;
-	} else if (Image_getHeight(a) != Image_getHeight(b)) {
-		std::cerr << "Image heights do not match." << std::endl;
-		return false;
-	} else if (Image_getChannels(a) != Image_getChannels(b)) {
-		std::cerr << "Image channels do not match." << std::endl;
-		return false;
-	} else {
-		float *aData, *bData;
-		int width, height, channels;
-		int ii, jj, kk;
-
-		aData = Image_getData(a);
-		bData = Image_getData(b);
-
-		assert(aData != NULL);
-		assert(bData != NULL);
-
-		width = Image_getWidth(a);
-		height = Image_getHeight(a);
-		channels = Image_getChannels(a);
-
-		for (ii = 0; ii < height; ii++) {
-			for (jj = 0; jj < width; jj++) {
-				for (kk = 0; kk < channels; kk++) {
-					float x, y;
-					if (channels <= 3) {
-						x = clamp(*aData++, 0, 1);
-						y = clamp(*bData++, 0, 1);
-					} else {
-						x = *aData++;
-						y = *bData++;
-					}
-					if (almostUnequalFloat(x, y)) {
-						std::cerr
-								<< "Image pixels do not match at position ( row = "
-								<< ii << ", col = " << jj << ", channel = "
-								<< kk << ") expecting a value of " << y
-								<< " but got a value of " << x << std::endl;
-
-						return false;
-					}
-				}
-			}
-		}
-		return true;
-	}
 }

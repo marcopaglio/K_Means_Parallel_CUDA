@@ -61,3 +61,11 @@ void setAttributes(Point* p, float* c, int d, const string& s) {
     setDimension(p, d);
     setMetadata(p, s);
 }
+
+void Point_delete(Point* p) {
+	if (p != NULL) {
+		if (p->coordinates != NULL) {
+			free(p->coordinates);
+		}
+	}
+}

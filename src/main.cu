@@ -1,21 +1,25 @@
 #include <iostream>
 #include "Utils.h"
 #include "KMeans.h"
+#include "Image.h"
+
+#include <chrono>
+#include <thread>
 
 using namespace std;
 
 #define MAX_K 10
 
 int main() {
-	int k = 6;
+	int k = 4;
 
-	Image* img = load("/home/marco/eclipse-workspace/K_Means_Parallel_CUDA/src/Image/test.ppm");
+	Image* img = loadJPEG("/home/kevin/git/K_Means_Parallel_CUDA/src/Image/monarch.jpg");
 
 	SetOfPoints data = pixelize(img);
 
 	SetOfPoints* clusters = kMeans(k, data);
 
-	saveRGBimage2D(k, clusters, "/home/marco/eclipse-workspace/K_Means_Parallel_CUDA/out/results/testOut.ppm", img);
+	savePNG(clusters, k, "/home/kevin/git/K_Means_Parallel_CUDA/out/results/testOut.png", img->width, img->height);
 
 	for (int p = 0; p < Image_getWidth(img) * Image_getHeight(img); p++) {
 		free(data.pointList[p].coordinates);

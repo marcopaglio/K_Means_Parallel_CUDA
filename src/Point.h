@@ -35,4 +35,6 @@ __host__ float getDistance(const Point& p1, const Point& p2) noexcept(false); //
 
 void setAttributes(Point* p, float* c, int d, const string& s);
 
+void Point_delete(Point* p);
+
 #endif /* POINT_H_ */
