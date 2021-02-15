@@ -11,14 +11,15 @@
 #include "SetOfPoints.h"
 #include "Point.h"
 
-__host__ SetOfPoints* kMeans(int k, const SetOfPoints& data) noexcept(false);
+__host__ SetOfPoints* kMeans(unsigned int k, const SetOfPoints& data) noexcept(false);
 
-__host__ Point* initialCentroids(int k, const SetOfPoints& data);
+__host__ Point* initialCentroids(unsigned int k, const SetOfPoints& data);
 
-void updateClusters(int k, Point* centroids, const SetOfPoints& data, int* clusterization, int* clusterSize);
+__host__ void updateClusters(unsigned int k, const SetOfPoints& data, Point* centroids, unsigned int* clusterization, unsigned int* clusterSize, float* sum);
 
-Point* updateCentroids(int k, const SetOfPoints& data, const int* clusterization);
+__host__ Point* updateCentroids(unsigned int k, unsigned int dim, unsigned int* clusterSize, float* sum);
 
-bool checkStop(int k, const Point* oldCentroids, const Point* newCentroids);
+__host__ bool checkStop(unsigned int k, const Point* oldCentroids, const Point* newCentroids);
+
 
 #endif /* KMEANS_H_ */
