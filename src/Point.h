@@ -21,7 +21,7 @@ typedef struct {
     string metadata;
 } Point;
 
-float getCoordinateAt(const Point& p, int pos) noexcept(false);
+__host__ __device__ float getCoordinateAt(const Point& p, int pos) noexcept(false);
 
 void copyPoint(Point* copy, const Point* original);
 
@@ -31,7 +31,7 @@ void setCoordinates(Point* p, float* coordinates);
 
 void setMetadata(Point* p, const string& meta);
 
-__host__ float getDistance(const Point& p1, const Point& p2) noexcept(false); //TODO anche __device__
+__host__ __device__ float getDistance(const Point& p1, const Point& p2) noexcept(false); //TODO anche __device__
 
 void setAttributes(Point* p, float* c, int d, const string& s);
 
