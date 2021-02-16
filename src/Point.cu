@@ -56,6 +56,19 @@ __host__ __device__ float getDistance(const Point& p1, const Point& p2) /*noexce
     return sqrt(sum);
 }
 
+__host__ __device__ float getDistanceCoordinates(const Point& p1, const float* p2, unsigned int dim2) /*noexcept(false)*/ {
+    /*if (p1.dimension != dim2) {
+        throw invalid_argument("Distance is calculated only for same dimension points");
+    }*/
+    float sum = 0;
+    float difference;
+    for (int i = 0; i < dim2; i++) {
+        difference = p1.coordinates[i] - p2[i];
+        sum += difference * difference;
+    }
+    return sqrt(sum);
+}
+
 void setAttributes(Point* p, float* c, int d, const string& s) {
     setCoordinates(p, c);
     setDimension(p, d);

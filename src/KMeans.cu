@@ -21,6 +21,7 @@ static void CheckCudaErrorAux(const char *, unsigned, const char *,
 __device__ unsigned int d_newCentroidIndex;
 __device__ float d_maxMinDistance;
 __device__ unsigned int cudaLock;
+extern __constant__ float c_centroids[];
 
 /**
  * Check the return value of the CUDA runtime API call and exit
@@ -50,19 +51,23 @@ __host__ SetOfPoints* kMeans(unsigned int k, const SetOfPoints& data) noexcept(f
         setAttributes(&(clusters[0]), pointList, numPoints);
         return clusters;
     }
+    unsigned int dim = data.pointList[0].dimension;
 
-    Point* centroids = initialCentroids(k, data);
+    float* centroidCoordinates;
+   	CUDA_CHECK_RETURN(cudaGetSymbolAddress((void**)&centroidCoordinates, c_centroids));
+	//assert(dim == channels);
+	Point* centroids = initialCentroids(k, dim, data, centroidCoordinates);
+
     unsigned int* clusterization = (unsigned int *) calloc(numPoints, sizeof(unsigned int));
     Point* oldCentroids;
     unsigned int* clusterSize = (unsigned int *) calloc(k, sizeof(unsigned int));
-    unsigned int dim = data.pointList[0].dimension;
     float* sum = (float *) calloc(k * dim, sizeof(float));
 
     bool stop = false;
     while (!stop) {
-        updateClusters(k, data, centroids, clusterization, clusterSize, sum);
+        updateClusters(k, data/*, centroids*/, clusterization, clusterSize, sum);
         oldCentroids = centroids;
-        centroids = updateCentroids(k, dim, clusterSize, sum);
+        centroids = updateCentroids(k, dim, clusterSize, sum, centroidCoordinates);
 
         if(checkStop(k, oldCentroids, centroids)) {
             stop = true;
@@ -108,22 +113,24 @@ __host__ bool checkStop(unsigned int k, const Point* oldCentroids, const Point* 
     return true;
 }
 
-__host__ Point* updateCentroids(unsigned int k, unsigned int dim, unsigned int* clusterSize, float* sum) {
+__host__ Point* updateCentroids(unsigned int k, unsigned int dim, unsigned int* clusterSize, float* sum, float* centroidCoordinates) {
     string fakeMeta;
+    float* coordinates;
 
     Point* centroids = (Point*) calloc(k, sizeof(Point));
     for (unsigned int c = 0; c < k; c++) {
-        float* coordinates = (float*) calloc(dim, sizeof(float));
+        coordinates = (float*) calloc(dim, sizeof(float));
         for (unsigned int d = 0; d < dim; d++) {
             coordinates[d] = sum[c * dim + d] / (float) clusterSize[c];
         }
         setAttributes(&(centroids[c]), coordinates, dim, fakeMeta);
+		CUDA_CHECK_RETURN(cudaMemcpy((void*)&centroidCoordinates[c * dim], (void*)coordinates, dim * sizeof(float), cudaMemcpyHostToDevice));
     }
 
     return centroids;
 }
 
-__global__ void updateClustersKernel(unsigned int k, Point* d_pointList, unsigned int size, unsigned int from, Point* c_centroids, unsigned int* d_clusterization, unsigned int* d_clusterSize, float* d_sum) {
+__global__ void updateClustersKernel(unsigned int k, Point* d_pointList, unsigned int size, unsigned int from/*, Point* c_centroids*/, unsigned int* d_clusterization, unsigned int* d_clusterSize, float* d_sum) {
 	unsigned int p = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (p < size) {
@@ -133,7 +140,8 @@ __global__ void updateClustersKernel(unsigned int k, Point* d_pointList, unsigne
         float distance;
 
         for (unsigned int c = 0; c < k; c++) {
-            distance = getDistance(d_pointList[p], c_centroids[c]);
+            //distance = getDistance(d_pointList[p], c_centroids[c]);
+            distance = getDistanceCoordinates(d_pointList[p], &c_centroids[c * dim], dim);
             if (distance < minDistance) {
                 minDistance = distance;
                 nearestCentroid = c;
@@ -147,7 +155,7 @@ __global__ void updateClustersKernel(unsigned int k, Point* d_pointList, unsigne
 	}
 }
 
-__host__ void updateClusters(unsigned int k, const SetOfPoints& data, Point* centroids, unsigned int* clusterization, unsigned int* clusterSize, float* sum) {
+__host__ void updateClusters(unsigned int k, const SetOfPoints& data/*, Point* centroids*/, unsigned int* clusterization, unsigned int* clusterSize, float* sum) {
     unsigned int numPoints = data.sizeList;
 	unsigned int dim = data.pointList[0].dimension;
 	for (unsigned int c = 0; c < k; c++) {
@@ -166,7 +174,7 @@ __host__ void updateClusters(unsigned int k, const SetOfPoints& data, Point* cen
 	float* d_sum;
 	CUDA_CHECK_RETURN(cudaMalloc((void**)&d_sum, k * dim * sizeof(float)));
 	CUDA_CHECK_RETURN(cudaMemcpy((void*)d_sum, (void*)sum, k * dim * sizeof(float), cudaMemcpyHostToDevice));
-	float* d_copyCoordinates;
+	/*float* d_copyCoordinates;
 	Point* c_centroids;
 	CUDA_CHECK_RETURN(cudaMalloc((void**)&c_centroids, k * sizeof(Point)));
 	CUDA_CHECK_RETURN(cudaMemcpy((void*)c_centroids, (void*)centroids, k * sizeof(Point), cudaMemcpyHostToDevice));
@@ -176,7 +184,7 @@ __host__ void updateClusters(unsigned int k, const SetOfPoints& data, Point* cen
 				(void*)centroids[c].coordinates, dim * sizeof(float), cudaMemcpyHostToDevice));
 		CUDA_CHECK_RETURN(cudaMemcpy((void*)&((c_centroids + c)->coordinates), (void*)&d_copyCoordinates,
 				sizeof((c_centroids + c)->coordinates), cudaMemcpyHostToDevice));
-	}
+	}*/
 
 	cudaDeviceProp dev_prop;
 	cudaGetDeviceProperties(&dev_prop, 0);
@@ -185,10 +193,8 @@ __host__ void updateClusters(unsigned int k, const SetOfPoints& data, Point* cen
 	unsigned int gridSizeNecessary = ceil(data.sizeList / (float) blockSize);
     unsigned int gridSize = dev_prop.maxGridSize[0];
 
-    Point* d_pointList;
     unsigned int from = 0;
     unsigned int size;
-    unsigned int p;
 
     while (gridSizeNecessary > 0) {
 		if (gridSizeNecessary > dev_prop.maxGridSize[0]) { //maxGridSize = 2 miliardi, sicuramente troppo, vedi FIXME successivo
@@ -197,30 +203,13 @@ __host__ void updateClusters(unsigned int k, const SetOfPoints& data, Point* cen
 			size = data.sizeList - from;
 			gridSize = gridSizeNecessary;
 		}
-		CUDA_CHECK_RETURN(cudaMalloc((void**)&d_pointList, size * sizeof(Point))); //FIXME returned out of memory because too much great
-		CUDA_CHECK_RETURN(cudaMemcpy((void*)d_pointList, (void*)&data.pointList[from],
-				size * sizeof(Point), cudaMemcpyHostToDevice));
-		for (p = 0; p < size; p++) {
-			CUDA_CHECK_RETURN(cudaMalloc((void**)&d_copyCoordinates, dim * sizeof(float)));
-			CUDA_CHECK_RETURN(cudaMemcpy((void*)d_copyCoordinates,
-					(void*)data.pointList[from + p].coordinates, dim * sizeof(float), cudaMemcpyHostToDevice));
-			CUDA_CHECK_RETURN(cudaMemcpy((void*)&((d_pointList + p)->coordinates),
-					(void*)&d_copyCoordinates, sizeof((d_pointList + p)->coordinates), cudaMemcpyHostToDevice));
-		}
 
 		//CALL kernel
-		updateClustersKernel<<<gridSize, blockSize>>>(k, d_pointList, size, from, c_centroids, d_clusterization, d_clusterSize, d_sum);
+		updateClustersKernel<<<gridSize, blockSize>>>(k, &data.pointList[from], size, from/*, c_centroids*/, d_clusterization, d_clusterSize, d_sum);
 
 		from += size;
 		gridSizeNecessary -= gridSize;
 		cudaDeviceSynchronize();
-
-		for (p = 0; p < size; p++) {
-			CUDA_CHECK_RETURN(cudaMemcpy((void*)&d_copyCoordinates, (void*)&((d_pointList + p)->coordinates),
-							sizeof((d_pointList + p)->coordinates), cudaMemcpyDeviceToHost));
-			CUDA_CHECK_RETURN(cudaFree(d_copyCoordinates));
-		}
-		CUDA_CHECK_RETURN(cudaFree(d_pointList));
 	}
 
     CUDA_CHECK_RETURN(cudaMemcpy((void*)sum, (void*)d_sum, k * dim * sizeof(float), cudaMemcpyDeviceToHost));
@@ -229,15 +218,15 @@ __host__ void updateClusters(unsigned int k, const SetOfPoints& data, Point* cen
     CUDA_CHECK_RETURN(cudaFree(d_clusterSize));
     CUDA_CHECK_RETURN(cudaMemcpy((void*)clusterization, (void*)d_clusterization, numPoints * sizeof(unsigned int), cudaMemcpyDeviceToHost));
     CUDA_CHECK_RETURN(cudaFree(d_clusterization));
-    for (unsigned int c = 0; c < k; c++) {
+    /*for (unsigned int c = 0; c < k; c++) {
 		CUDA_CHECK_RETURN(cudaMemcpy((void*)&d_copyCoordinates, (void*)&((c_centroids + c)->coordinates),
 				sizeof((c_centroids + c)->coordinates), cudaMemcpyDeviceToHost));
 		CUDA_CHECK_RETURN(cudaFree(d_copyCoordinates));
 	}
-	CUDA_CHECK_RETURN(cudaFree(c_centroids));
+	CUDA_CHECK_RETURN(cudaFree(c_centroids));*/
 }
 
-__global__ void maxMinDistanceKernel(unsigned int i, Point* d_pointList, unsigned int size, unsigned int from, Point* c_centroids) {
+__global__ void maxMinDistanceKernel(unsigned int i, unsigned int dim, Point* d_pointList, unsigned int size, unsigned int from/*, Point* c_centroids*/) {
 	__shared__ float ds_maxMinDistances[128];
 	__shared__ unsigned int ds_maxMinIndexes[128];
 
@@ -251,7 +240,8 @@ __global__ void maxMinDistanceKernel(unsigned int i, Point* d_pointList, unsigne
 		float minDistance = INFINITY;
 		float distance;
 		for (unsigned int j = 0; j < i; j++) {
-			distance = getDistance(d_pointList[p], c_centroids[j]);
+			//distance = getDistance(d_pointList[p], c_centroids[j]);
+			distance = getDistanceCoordinates(d_pointList[p], &c_centroids[j * dim], dim);
 			if (distance < minDistance) {
 				minDistance = distance;
 			}
@@ -292,16 +282,15 @@ __global__ void maxMinDistanceKernel(unsigned int i, Point* d_pointList, unsigne
 	}
 }
 
-__host__ Point* initialCentroids(unsigned int k, const SetOfPoints& data) {
+__host__ Point* initialCentroids(unsigned int k, unsigned int dim, const SetOfPoints& data, float* centroidCoordinates) {
     if (data.sizeList == k) {
         return data.pointList;
     }
     Point* centroids = (Point*) calloc(k, sizeof(Point));
-	Point* c_centroids;
-	CUDA_CHECK_RETURN(cudaMalloc((void**)&c_centroids, k * sizeof(Point)));
+	//Point* c_centroids;
+	//CUDA_CHECK_RETURN(cudaMalloc((void**)&c_centroids, k * sizeof(Point)));
 
-	unsigned int dim = data.pointList[0].dimension;
-	float* d_copyCoordinates;
+	//float* d_copyCoordinates;
 
     int firstIndex = 0;
     copyPoint(&(centroids[0]), &(data.pointList[firstIndex]));
@@ -315,6 +304,9 @@ __host__ Point* initialCentroids(unsigned int k, const SetOfPoints& data) {
 	}
 	*****/
 
+    CUDA_CHECK_RETURN(cudaMemcpy((void*)&(centroidCoordinates[0]), (void*)centroids[0].coordinates, dim * sizeof(float), cudaMemcpyHostToDevice));
+
+    /*
     //Every deep copy in device memory consists in 4 steps:
     //1) init struct in device memory
     CUDA_CHECK_RETURN(cudaMemcpy((void*)&(c_centroids[0]),
@@ -324,7 +316,7 @@ __host__ Point* initialCentroids(unsigned int k, const SetOfPoints& data) {
     //3) init array in device memory
     CUDA_CHECK_RETURN(cudaMemcpy((void*)d_copyCoordinates,
     		(void*)centroids[0].coordinates, dim * sizeof(float), cudaMemcpyHostToDevice));
-
+	*/
     /**** NEXT CODE IS USED TO VERIFY COPY IS DONE
     memset(centroids[0].coordinates, 0, dim * sizeof(float));
     cudaMemcpy(&centroids[0], &c_centroids[0], sizeof(Point), cudaMemcpyDeviceToHost);
@@ -336,11 +328,11 @@ __host__ Point* initialCentroids(unsigned int k, const SetOfPoints& data) {
         std::cout << i << " " << centroids[0].coordinates[i] << std::endl;
     }
     *****/
-
+    /*
     //4) move device array pointer to device struct field
     CUDA_CHECK_RETURN(cudaMemcpy((void*)&((c_centroids + 0)->coordinates), (void*)&d_copyCoordinates,
     		sizeof((c_centroids + 0)->coordinates), cudaMemcpyHostToDevice));
-
+	*/
     cudaDeviceProp dev_prop;
     cudaGetDeviceProperties(&dev_prop, 0); //device = GPU ?? Sì
 
@@ -350,11 +342,9 @@ __host__ Point* initialCentroids(unsigned int k, const SetOfPoints& data) {
     unsigned int h_newCentroidIndex;
     float h_maxMinDistance;
 
-    Point* d_pointList;
     unsigned int from;
     unsigned int size;
     unsigned int gridSize = dev_prop.maxGridSize[0];
-    unsigned int p;
 
     for (unsigned int i = 1; i < k; i++) {
         h_maxMinDistance = 0;
@@ -375,33 +365,9 @@ __host__ Point* initialCentroids(unsigned int k, const SetOfPoints& data) {
         		size = data.sizeList - from;
         		gridSize = gridSizeNecessary;
         	}
-        	CUDA_CHECK_RETURN(cudaMalloc((void**)&d_pointList, size * sizeof(Point))); //FIXME returned out of memory because too much great
-        	CUDA_CHECK_RETURN(cudaMemcpy((void*)d_pointList, (void*)&data.pointList[from],
-        			size * sizeof(Point), cudaMemcpyHostToDevice));
-        	for (p = 0; p < size; p++) {
-        		CUDA_CHECK_RETURN(cudaMalloc((void**)&d_copyCoordinates, dim * sizeof(float)));
-        		CUDA_CHECK_RETURN(cudaMemcpy((void*)d_copyCoordinates,
-        				(void*)data.pointList[from + p].coordinates, dim * sizeof(float), cudaMemcpyHostToDevice));
-        		CUDA_CHECK_RETURN(cudaMemcpy((void*)&((d_pointList + p)->coordinates),
-        				(void*)&d_copyCoordinates, sizeof((d_pointList + p)->coordinates), cudaMemcpyHostToDevice));
-
-				/**** NEXT CODE IS USED TO VERIFY COPY IS DONE
-				if (p % 1000 == 0) {
-					std::cout << "Punto " << p << "-esimo: " << std::endl;
-					for(int i=0; i<dim; i++) {
-						std::cout << i << " " << data.pointList[from + p].coordinates[i] << std::endl;
-					}
-					memset(data.pointList[from + p].coordinates, 0, dim * sizeof(float));
-					cudaMemcpy(data.pointList[from + p].coordinates, d_copyCoordinates, dim * sizeof(float), cudaMemcpyDeviceToHost);
-					for(int i=0; i<dim; i++) {
-						std::cout << i << " " << data.pointList[from + p].coordinates[i] << std::endl;
-					}
-				}
-				****/
-        	}
 
         	//CALL kernel
-        	maxMinDistanceKernel<<<gridSize, blockSize>>>(i, d_pointList, size, from, c_centroids);
+        	maxMinDistanceKernel<<<gridSize, blockSize>>>(i, dim, &data.pointList[from], size, from/*, c_centroids*/);
 
         	from += size;
         	gridSizeNecessary -= gridSize;
@@ -413,17 +379,6 @@ __host__ Point* initialCentroids(unsigned int k, const SetOfPoints& data) {
         	error = cudaGetErrorString(cudaThreadSynchronize());
         	std::cout << error << std::endl;
         	****/
-
-        	for (p = 0; p < size; p++) {
-				//access to device pointer is not possible, so...
-				//1) copy pointer of device pointer in pointer of host-defined device pointer
-				CUDA_CHECK_RETURN(cudaMemcpy((void*)&d_copyCoordinates, (void*)&((d_pointList + p)->coordinates),
-								sizeof((d_pointList + p)->coordinates), cudaMemcpyDeviceToHost));
-				//2) free host defined device pointer
-				CUDA_CHECK_RETURN(cudaFree(d_copyCoordinates));
-			}
-			// This doesn't need to copy because is a host-defined device pointer
-			CUDA_CHECK_RETURN(cudaFree(d_pointList));
         }
 
         CUDA_CHECK_RETURN(cudaMemcpyFromSymbol(&h_newCentroidIndex, d_newCentroidIndex, sizeof(unsigned int)));
@@ -438,12 +393,14 @@ __host__ Point* initialCentroids(unsigned int k, const SetOfPoints& data) {
     	}
     	****/
 
-        CUDA_CHECK_RETURN(cudaMemcpy((void*)&c_centroids[i],
+        CUDA_CHECK_RETURN(cudaMemcpy((void*)&(centroidCoordinates[i * dim]), (void*)centroids[i].coordinates, dim * sizeof(float), cudaMemcpyHostToDevice));
+
+        /*CUDA_CHECK_RETURN(cudaMemcpy((void*)&c_centroids[i],
         		(void*)&centroids[i], sizeof(Point), cudaMemcpyHostToDevice));
         CUDA_CHECK_RETURN(cudaMalloc((void**)&d_copyCoordinates, dim * sizeof(float)));
         CUDA_CHECK_RETURN(cudaMemcpy((void*)d_copyCoordinates,
         		(void*)centroids[i].coordinates, dim * sizeof(float), cudaMemcpyHostToDevice));
-
+		*/
         /**** NEXT CODE IS USED TO VERIFY COPY IS DONE
         memset(centroids[i].coordinates, 0, dim * sizeof(float));
         cudaMemcpy(&centroids[i], &c_centroids[i], sizeof(Point), cudaMemcpyDeviceToHost);
@@ -455,17 +412,19 @@ __host__ Point* initialCentroids(unsigned int k, const SetOfPoints& data) {
             std::cout << j << " " << centroids[i].coordinates[j] << std::endl;
         }
         ****/
-
+		/*
         CUDA_CHECK_RETURN(cudaMemcpy((void*)&((c_centroids + i)->coordinates), (void*)&d_copyCoordinates,
         		sizeof((c_centroids + i)->coordinates), cudaMemcpyHostToDevice));
+		*/
     }
-
+    /*
     for (unsigned int c = 0; c < k; c++) {
     	CUDA_CHECK_RETURN(cudaMemcpy((void*)&d_copyCoordinates, (void*)&((c_centroids + c)->coordinates),
     			sizeof((c_centroids + c)->coordinates), cudaMemcpyDeviceToHost));
     	CUDA_CHECK_RETURN(cudaFree(d_copyCoordinates));
     }
     CUDA_CHECK_RETURN(cudaFree(c_centroids));
+    */
 
     return centroids;
 }

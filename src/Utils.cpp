@@ -6,6 +6,7 @@
  */
 
 #include "Utils.h"
+#include <iostream>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -16,6 +17,22 @@
 
 using namespace std;
 
+static void CheckCudaErrorAux(const char *, unsigned, const char *,
+		cudaError_t);
+#define CUDA_CHECK_RETURN(value) CheckCudaErrorAux(__FILE__,__LINE__, #value, value)
+
+/**
+ * Check the return value of the CUDA runtime API call and exit
+ * the application if the call has failed.
+ */
+static void CheckCudaErrorAux(const char *file, unsigned line,
+		const char *statement, cudaError_t err) {
+	if (err == cudaSuccess)
+		return;
+	std::cerr << statement << " returned " << cudaGetErrorString(err) << "("
+			<< err << ") at " << file << ":" << line << std::endl;
+	exit(1);
+}
 
 Image* loadJPEG(const char *filename) {
 	Image* img = NULL;
@@ -39,12 +56,15 @@ SetOfPoints pixelize(const Image* img) {
     int channels = Image_getChannels(img);
 
     SetOfPoints data;
-    data.pointList = (Point *) calloc(width * height, sizeof (Point));
+    //data.pointList = (Point *) calloc(width * height, sizeof (Point));
+    CUDA_CHECK_RETURN(cudaMallocHost((void**)&(data.pointList), width * height * sizeof(Point), cudaHostAllocMapped));
     data.sizeList = width * height;
 
+    float* coordinates;
     for (int x = 0; x < width; x++) {
         for (int y = 0; y < height; y++) {
-            float *coordinates = (float *) calloc(channels, sizeof(float));
+            //coordinates = (float *) calloc(channels, sizeof(float));
+        	CUDA_CHECK_RETURN(cudaMallocHost((void**)&coordinates, channels * sizeof(float), cudaHostAllocMapped));
             for (int z = 0; z < channels; z++) {
             	coordinates[z] = (float) (Image_getData(img)[y * width * channels + x * channels + z]);
             }
