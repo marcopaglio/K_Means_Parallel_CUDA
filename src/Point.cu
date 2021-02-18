@@ -28,6 +28,17 @@ void copyPoint(Point* copy, const Point* original) {
     setMetadata(copy, (original)->metadata);
 }
 
+void Point_init(Point* copy, float* original, unsigned int dimOriginal, string meta) {
+    setDimension(copy, dimOriginal);
+    float* copyCoordinates = (float *) calloc(dimOriginal, sizeof (float));
+    for (int i = 0; i < dimOriginal; i++) {
+        copyCoordinates[i] = original[i];
+    }
+    setCoordinates(copy, copyCoordinates);
+    setMetadata(copy, meta);
+}
+
+
 void setDimension(Point* p, int dim) {
     (p)->dimension = dim;
 }
@@ -49,24 +60,21 @@ __host__ __device__ float getDistance(const Point& p1, const Point& p2) /*noexce
     }*/
     float sum = 0;
     float difference;
-    for (int i = 0; i < p1.dimension; i++) {
+    for (unsigned int i = 0; i < p1.dimension; i++) {
         difference = p1.coordinates[i] - p2.coordinates[i];
         sum += difference * difference;
     }
-    return sqrt(sum);
+    return sum;
 }
 
-__host__ __device__ float getDistanceCoordinates(const Point& p1, const float* p2, unsigned int dim2) /*noexcept(false)*/ {
-    /*if (p1.dimension != dim2) {
-        throw invalid_argument("Distance is calculated only for same dimension points");
-    }*/
+__host__ __device__ float getDistanceByCoordinates(const float* p1, const float* p2, unsigned int dim) {
     float sum = 0;
     float difference;
-    for (int i = 0; i < dim2; i++) {
-        difference = p1.coordinates[i] - p2[i];
+    for (unsigned int i = 0; i < dim; i++) {
+        difference = p1[i] - p2[i];
         sum += difference * difference;
     }
-    return sqrt(sum);
+    return sum;
 }
 
 void setAttributes(Point* p, float* c, int d, const string& s) {

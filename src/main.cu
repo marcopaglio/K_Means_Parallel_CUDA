@@ -3,15 +3,12 @@
 #include "KMeans.h"
 #include "Image.h"
 
-#include <chrono>
-#include <thread>
-
 using namespace std;
 
 #define MAX_K 10
-#define k 16
-#define channels 3
-__constant__ float c_centroids[k * channels];
+#define k 3
+extern const unsigned int channels = 3;			//extern rende pubblica var const
+__constant__ float c_centroidsCoordinates[k * channels];
 
 static void CheckCudaErrorAux(const char *, unsigned, const char *,
 		cudaError_t);
@@ -32,13 +29,13 @@ static void CheckCudaErrorAux(const char *file, unsigned line,
 
 int main() {
 
-	Image* img = loadJPEG("/home/marco/eclipse-workspace/K_Means_Parallel_CUDA/src/Image/test256.jpg");
+	Image* img = loadJPEG("/home/marco/eclipse-workspace/K_Means_Parallel_CUDA/src/Image/mountain.jpg");
 
 	SetOfPoints data = pixelize(img);
 
 	SetOfPoints* clusters = kMeans(k, data);
 
-	savePNG(clusters, k, "/home/marco/eclipse-workspace/K_Means_Parallel_CUDA/out/results/test256Out.png", img->width, img->height);
+	savePNG(clusters, k, "/home/marco/eclipse-workspace/K_Means_Parallel_CUDA/out/results/mountainOut.png", img->width, img->height);
 
 	for (int p = 0; p < Image_getWidth(img) * Image_getHeight(img); p++) {
 		//free(data.pointList[p].coordinates);

@@ -13,13 +13,13 @@
 
 __host__ SetOfPoints* kMeans(unsigned int k, const SetOfPoints& data) noexcept(false);
 
-__host__ Point* initialCentroids(unsigned int k, unsigned int dim, const SetOfPoints& data, float* centroidCoordinates);
+__host__ void initialCentroids(unsigned int k, float* d_pointsCoordinates);
 
-__host__ void updateClusters(unsigned int k, const SetOfPoints& data/*, Point* centroids*/, unsigned int* clusterization, unsigned int* clusterSize, float* sum);
+__host__ void updateClusters(unsigned int k, float* d_pointsCoordinates, unsigned int* clusterization, unsigned int* clusterSize, float* clusterSum);
 
-__host__ Point* updateCentroids(unsigned int k, unsigned int dim, unsigned int* clusterSize, float* sum, float* centroidCoordinates);
+__host__ Point* updateCentroids(unsigned int k, unsigned int* clusterSize, float* clusterSum);
 
-__host__ bool checkStop(unsigned int k, const Point* oldCentroids, const Point* newCentroids);
+__host__ bool checkStop(unsigned int k, const float* d_oldCentroidsCoordinates);
 
 
 #endif /* KMEANS_H_ */

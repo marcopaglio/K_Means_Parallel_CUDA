@@ -25,6 +25,8 @@ __host__ __device__ float getCoordinateAt(const Point& p, int pos) noexcept(fals
 
 void copyPoint(Point* copy, const Point* original);
 
+void Point_init(Point* copy, float* original, unsigned int dimOriginal, string meta);
+
 void setDimension(Point* p, int dim);
 
 void setCoordinates(Point* p, float* coordinates);
@@ -33,7 +35,7 @@ void setMetadata(Point* p, const string& meta);
 
 __host__ __device__ float getDistance(const Point& p1, const Point& p2) noexcept(false);
 
-__host__ __device__ float getDistanceCoordinates(const Point& p1, const float* p2, unsigned int dim2);
+__host__ __device__ float getDistanceByCoordinates(const float* p1, const float* p2, unsigned int dim);
 
 void setAttributes(Point* p, float* c, int d, const string& s);
 
