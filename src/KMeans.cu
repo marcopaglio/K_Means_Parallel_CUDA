@@ -7,16 +7,18 @@
 
 #include "KMeans.h"
 #include <cmath>
+#include "Utils.h"
 
 #include <cstdio>
 #include <cassert>
 #include <iostream>
 
-static void CheckCudaErrorAux(const char *, unsigned, const char *,
-		cudaError_t);
+static void CheckCudaErrorAux(const char *, unsigned, const char *, cudaError_t);
 #define CUDA_CHECK_RETURN(value) CheckCudaErrorAux(__FILE__,__LINE__, #value, value)
 
 #define TOLERANCE 0.005
+#define BLOCK_SIZE 64
+
 __device__ unsigned int d_dimension;
 __device__ unsigned int d_newCentroidIndex;
 __device__ float d_maxMinDistance;
@@ -31,12 +33,10 @@ static unsigned int numPoints;
  * Check the return value of the CUDA runtime API call and exit
  * the application if the call has failed.
  */
-static void CheckCudaErrorAux(const char *file, unsigned line,
-		const char *statement, cudaError_t err) {
+static void CheckCudaErrorAux(const char *file, unsigned line, const char *statement, cudaError_t err) {
 	if (err == cudaSuccess)
 		return;
-	std::cerr << statement << " returned " << cudaGetErrorString(err) << "("
-			<< err << ") at " << file << ":" << line << std::endl;
+	std::cerr << statement << " returned " << cudaGetErrorString(err) << "(" << err << ") at " << file << ":" << line << std::endl;
 	exit(1);
 }
 
@@ -123,10 +123,11 @@ __host__ bool checkStop(unsigned int k, const float* d_oldCentroidsCoordinates) 
 	CUDA_CHECK_RETURN(cudaMalloc((void**)&d_stop, sizeof(int)));
 	CUDA_CHECK_RETURN(cudaMemset(d_stop, 0, sizeof(int)));
 
-	unsigned int blockSize = 128;
-	unsigned int gridSize = ceil(k * h_dimension / (float)blockSize);
+	unsigned int gridSize = (k*h_dimension)/BLOCK_SIZE + ((k * h_dimension) % BLOCK_SIZE != 0);
 
-	checkStopKernel<<<gridSize, blockSize>>>(k, d_oldCentroidsCoordinates, d_stop);
+	checkStopKernel<<<gridSize, BLOCK_SIZE>>>(k, d_oldCentroidsCoordinates, d_stop);
+	cudaDeviceSynchronize();
+
     CUDA_CHECK_RETURN(cudaMemcpy((void*)&h_stop, (void*)d_stop, sizeof(int), cudaMemcpyDeviceToHost));
     return h_stop ? false : true;
 }
@@ -224,36 +225,46 @@ __host__ void updateClusters(unsigned int k, float* d_pointsCoordinates, unsigne
     CUDA_CHECK_RETURN(cudaFree(d_clusterization));
 }
 
-__global__ void maxMinDistanceKernel(unsigned int i, const float* d_pointsCoordinates, unsigned int size, unsigned int from) {
-	__shared__ float ds_maxMinDistances[128];
-	__shared__ unsigned int ds_maxMinIndexes[128];
+__global__ void maxMinDistanceKernel(unsigned int i, const float* d_pointsCoordinates, unsigned int size, unsigned int pointsPerThread) {
+	__shared__ float ds_maxMinDistances[BLOCK_SIZE];
+	__shared__ unsigned int ds_maxMinIndexes[BLOCK_SIZE];
 
-	unsigned p = blockIdx.x * blockDim.x + threadIdx.x;
+	// indexes
+	unsigned int index = blockIdx.x * blockDim.x + threadIdx.x;
+	unsigned int from = index * pointsPerThread;
+	unsigned int to = (index + 1) * pointsPerThread;	// the last thread could have less points, but we check later
 	unsigned int t = threadIdx.x;
 
-	if (p < size) {
-		float minDistance = INFINITY;
-		float distance;
-		for (unsigned int j = 0; j < i; j++) {
-			//distance = getDistance(d_pointList[p], c_centroids[j]);
-			distance = getDistanceByCoordinates(&d_pointsCoordinates[(from + p) * d_dimension], &c_centroidsCoordinates[j * d_dimension], d_dimension);
-			if (distance < minDistance) {
-				minDistance = distance;
+	// collaborative initialization
+	ds_maxMinDistances[t] = -1;
+	ds_maxMinIndexes[t] = INT_MAX;
+
+	// points processing
+	for (int p = from; p < to; p++){
+		if (p < size) {
+			float minDistance = INFINITY;
+			float distance;
+			for (unsigned int j = 0; j < i; j++) {
+				//distance = getDistance(d_pointList[p], c_centroids[j]);
+				distance = getDistanceByCoordinates(&d_pointsCoordinates[p * d_dimension], &c_centroidsCoordinates[j * d_dimension], d_dimension);
+				if (distance < minDistance) {
+					minDistance = distance;
+				}
+			}
+
+			if (distance > ds_maxMinDistances[t]) {
+				ds_maxMinDistances[t] = minDistance;
+				ds_maxMinIndexes[t] = p;
 			}
 		}
-
-		ds_maxMinDistances[t] = minDistance;
-		ds_maxMinIndexes[t] = from + p;
-	} else {
-		ds_maxMinDistances[t] = 0;			//0 will never be caught
-		ds_maxMinIndexes[t] = from + size;	//from+size is out of range
 	}
 
-	for (unsigned int stride = blockDim.x / 2; stride >= 1; stride /= 2) {
+	// comparing reduction
+	for (unsigned int stride = blockDim.x/2; stride >= 1; stride /= 2) {
 		__syncthreads();
 
 		if (t >= stride) {
-			return; //TESTED with k=10 less than if(t < stride) {} (TOT: 82s vs 83s)
+			return; // TODO to test // with k=10 less than if(t < stride) {} (TOT: 82s vs 83s)
 		} else {
 		//if(t < stride){
 			if (ds_maxMinDistances[t] < ds_maxMinDistances[t + stride]) {
@@ -278,44 +289,29 @@ __global__ void maxMinDistanceKernel(unsigned int i, const float* d_pointsCoordi
 }
 
 __host__ void initialCentroids(unsigned int k, float* d_pointsCoordinates) {
+	// first centroid
     int firstIndex = 0;
     CUDA_CHECK_RETURN(cudaMemcpy((void*)&h_centroidsCoordinates[0 * h_dimension], (void*)&d_pointsCoordinates[firstIndex * h_dimension], h_dimension * sizeof(float), cudaMemcpyHostToDevice));
 
+    // blocks-threads organization
     cudaDeviceProp dev_prop;
     cudaGetDeviceProperties(&dev_prop, 0);
+    int numberOfCores = getSPcores(dev_prop);
 
-    unsigned int blockSize = 128;
-    unsigned int gridSizeNecessary;
+    unsigned int gridSize = numberOfCores/BLOCK_SIZE + (numberOfCores % BLOCK_SIZE != 0);			// integer ceil
+    unsigned int pointsPerThread = numPoints/numberOfCores + (numPoints % numberOfCores != 0);		// integer ceil
 
+    // kernel call iteration
     unsigned int h_newCentroidIndex;
     float h_maxMinDistance;
-
-    unsigned int from;
-    unsigned int size;
-    unsigned int gridSize = dev_prop.maxGridSize[0];
 
     for (unsigned int i = 1; i < k; i++) {
         h_maxMinDistance = 0;
         CUDA_CHECK_RETURN(cudaMemcpyToSymbol(d_maxMinDistance, &h_maxMinDistance, sizeof(float)));
 
-        from = 0;
-        gridSizeNecessary = ceil(numPoints / (float) blockSize); //need cast to float in order to have right value
+        maxMinDistanceKernel<<<gridSize, BLOCK_SIZE>>>(i, d_pointsCoordinates, numPoints, pointsPerThread);
+        CUDA_CHECK_RETURN(cudaDeviceSynchronize());
 
-        while (gridSizeNecessary > 0) {
-        	if (gridSizeNecessary > dev_prop.maxGridSize[0]) { //FIXME maxGridSize = 2 miliardi, sicuramente troppo
-        		size = gridSize * blockSize;
-        	} else {
-        		size = numPoints - from;
-        		gridSize = gridSizeNecessary;
-        	}
-
-        	//CALL kernel
-        	maxMinDistanceKernel<<<gridSize, blockSize>>>(i, d_pointsCoordinates, size, from);
-
-        	from += size;
-        	gridSizeNecessary -= gridSize;
-        	cudaDeviceSynchronize();
-        }
         CUDA_CHECK_RETURN(cudaMemcpyFromSymbol(&h_newCentroidIndex, d_newCentroidIndex, sizeof(unsigned int)));
         CUDA_CHECK_RETURN(cudaMemcpy((void*)&h_centroidsCoordinates[i * h_dimension], (void*)&d_pointsCoordinates[h_newCentroidIndex * h_dimension], h_dimension * sizeof(float), cudaMemcpyHostToDevice));
     }

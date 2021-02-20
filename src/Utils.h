@@ -58,6 +58,11 @@ static inline float clamp(float x, float start, float end) {
 }
 
 /*
+ * Calculates the number of cores of the device
+ */
+int getSPcores(cudaDeviceProp devProp);
+
+/*
  * Load a JPEG image and return it as Image
  * @param filename path to JPEG
  * @return Image
