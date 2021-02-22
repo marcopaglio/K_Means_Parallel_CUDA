@@ -15,9 +15,7 @@ __host__ SetOfPoints* kMeans(unsigned int k, const SetOfPoints& data) noexcept(f
 
 __host__ void initialCentroids(unsigned int k, float* d_pointsCoordinates);
 
-__host__ void updateClusters(unsigned int k, float* d_pointsCoordinates, unsigned int* clusterization, unsigned int* clusterSize, float* clusterSum);
-
-__host__ Point* updateCentroids(unsigned int k, unsigned int* clusterSize, float* clusterSum);
+__host__ void updateClusters(unsigned int k, float* d_pointsCoordinates, unsigned int* clusterization, unsigned int* d_clusterSize, float* d_clusterSum);
 
 __host__ bool checkStop(unsigned int k, const float* d_oldCentroidsCoordinates);
 

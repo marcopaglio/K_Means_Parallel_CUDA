@@ -1,17 +1,20 @@
 #include <iostream>
-#include "Utils.h"
 #include <chrono>
+
+#include "Utils.h"
 #include "KMeans.h"
 #include "Image.h"
 
 using namespace std;
 using namespace std::chrono;
 
-#define MIN_K 3
-#define MAX_K 3
+#define MIN_K 16
+#define MAX_K 16
 #define STEP_K 2
-extern const unsigned int channels = 3;			//extern rende pubblica var const
+extern const unsigned int channels = 3;
 __constant__ float c_centroidsCoordinates[MAX_K * channels];
+__device__ unsigned int g_clusterSize[MAX_K];
+__device__ float g_clusterSum[MAX_K * channels];
 
 static void CheckCudaErrorAux(const char *, unsigned, const char *,
 		cudaError_t);
@@ -31,14 +34,13 @@ static void CheckCudaErrorAux(const char *file, unsigned line,
 }
 
 int main() {
-	string filename = "3K";
-	string pathIn = "/home/kevin/git/K_Means_Parallel_CUDA/src/Image/" + filename + ".jpg";
+	string filename = "lago";
+	string pathIn = "/home/marco/eclipse-workspace/K_Means_Parallel_CUDA/src/Image/" + filename + ".jpg";
 
 	Image* img = loadJPEG(pathIn.c_str());
 	SetOfPoints data = pixelize(img);
 
 	string pathOut;
-
 	for (unsigned int k = MIN_K; k <= MAX_K; k += STEP_K) {
 
 		auto start = system_clock::now();
@@ -51,7 +53,7 @@ int main() {
 
 		cout << "K = " << k << ": " << duration.count() << "ms" << endl;
 
-		pathOut = "/home/kevin/git/K_Means_Parallel_CUDA/out/results/" + filename + to_string(k) + "Out.png";
+		pathOut = "/home/marco/eclipse-workspace/K_Means_Parallel_CUDA/out/results/" + filename + to_string(k) + "Out.png";
 		savePNG(clusters, k, pathOut.c_str(), img->width, img->height);
 
 		if (k != 1) {
