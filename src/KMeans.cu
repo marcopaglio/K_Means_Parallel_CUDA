@@ -45,33 +45,36 @@ static void CheckCudaErrorAux(const char *file, unsigned line, const char *state
 }
 
 __host__ SetOfPoints* kMeans(unsigned int k, const SetOfPoints& data) noexcept(false) {
+	// extract points
     Point* points = data.pointList;
     if(points == nullptr) {
         throw invalid_argument("Clusters can't be null");
     }
+
+    // extract size
     numPoints = data.sizeList;
     if (numPoints < k) {
         throw length_error("There aren't enough points for k = " + to_string(k));
     }
 
-    SetOfPoints* clusters = SetOfPoints_new((Point *) calloc(k, sizeof (Point)), k);
-    if (k == 1) {
-        setAttributes(&clusters[0], points, numPoints);
-        return clusters;
-    }
-
+    // extract dimension
     h_dimension = data.pointList[0].dimension;
     CUDA_CHECK_RETURN(cudaMemcpyToSymbol(d_dimension, &h_dimension, sizeof(unsigned int)));
+    assert(h_dimension == channels);
 
-    float* d_pointsCoordinates;
-	CUDA_CHECK_RETURN(cudaMalloc((void**)&d_pointsCoordinates, h_dimension * numPoints * sizeof(float)));
-	for (unsigned int p = 0; p < numPoints; p++) {
-		CUDA_CHECK_RETURN(cudaMemcpy((void*)&d_pointsCoordinates[p * h_dimension],
-				(void*)data.pointList[p].coordinates, h_dimension * sizeof(float), cudaMemcpyHostToDevice));
+	float* pointsCoordinates;
+	CUDA_CHECK_RETURN(cudaMallocHost((void**)&(pointsCoordinates), h_dimension * numPoints * sizeof(float), cudaHostAllocMapped));
+	for (int p = 0; p < numPoints; p++){
+		for(int d = 0; d < h_dimension; d++) {
+			pointsCoordinates[p*h_dimension+d] = points[p].coordinates[d];
+		}
 	}
+	float* d_pointsCoordinates;
+	CUDA_CHECK_RETURN(cudaMalloc((void**)&d_pointsCoordinates, h_dimension * numPoints * sizeof(float)));
+	CUDA_CHECK_RETURN(cudaMemcpy((void*)&d_pointsCoordinates[0], (void*)pointsCoordinates, h_dimension * numPoints *sizeof(float), cudaMemcpyHostToDevice));
+	CUDA_CHECK_RETURN(cudaFreeHost(pointsCoordinates));
 
 	CUDA_CHECK_RETURN(cudaGetSymbolAddress((void**)&h_centroidsCoordinates, c_centroidsCoordinates));
-    assert(h_dimension == channels);
     initialCentroids(k, d_pointsCoordinates);
 
     unsigned int* d_clusterization;
@@ -99,6 +102,8 @@ __host__ SetOfPoints* kMeans(unsigned int k, const SetOfPoints& data) noexcept(f
     unsigned int* clusterSize = (unsigned int *) calloc(k, sizeof(unsigned int));
     CUDA_CHECK_RETURN(cudaMemcpy((void*)clusterSize, (void*)d_clusterSize, k * sizeof(unsigned int), cudaMemcpyDeviceToHost));
 
+    // alloc clusters
+    SetOfPoints* clusters = SetOfPoints_new((Point *) calloc(k, sizeof (Point)), k);
     unsigned int clusterIndex [k];
 	for (unsigned int c = 0; c < k; c++) {
 		setAttributes(&(clusters[c]), (Point *) calloc(clusterSize[c], sizeof(Point)), clusterSize[c]);
