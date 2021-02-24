@@ -16,24 +16,8 @@ __constant__ float c_centroidsCoordinates[MAX_K * channels];
 __device__ unsigned int g_clusterSize[MAX_K];
 __device__ float g_clusterSum[MAX_K * channels];
 
-static void CheckCudaErrorAux(const char *, unsigned, const char *, cudaError_t);
-#define CUDA_CHECK_RETURN(value) CheckCudaErrorAux(__FILE__,__LINE__, #value, value)
-
-/**
- * Check the return value of the CUDA runtime API call and exit
- * the application if the call has failed.
- */
-static void CheckCudaErrorAux(const char *file, unsigned line,
-		const char *statement, cudaError_t err) {
-	if (err == cudaSuccess)
-		return;
-	std::cerr << statement << " returned " << cudaGetErrorString(err) << "("
-			<< err << ") at " << file << ":" << line << std::endl;
-	exit(1);
-}
-
 int main() {
-	string filename = "lake";
+	string filename = "6K-1";
 	string pathIn = "/home/kevin/git/K_Means_Parallel_CUDA/src/Image/" + filename + ".jpg";
 
 	Image* img = loadJPEG(pathIn.c_str());

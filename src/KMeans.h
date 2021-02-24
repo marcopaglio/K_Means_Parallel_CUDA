@@ -17,7 +17,7 @@ __host__ void initialCentroids(unsigned int k, float* d_pointsCoordinates);
 
 __host__ void updateClusters(unsigned int k, float* d_pointsCoordinates, unsigned int* clusterization, unsigned int* d_clusterSize, float* d_clusterSum);
 
-__host__ bool checkStop(unsigned int k, const float* d_oldCentroidsCoordinates);
+__host__ bool checkStop(unsigned int k);
 
 
 #endif /* KMEANS_H_ */
